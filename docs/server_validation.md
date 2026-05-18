@@ -161,3 +161,42 @@ Five-seed trajectory means at shortcut strength 6, L2 80, penalty 0.1:
 Interpretation:
 
 The trajectory reveals a non-monotonic effect hidden by endpoint tables. Around epoch 100, all methods reduce shortcut sensitivity and reach better neutral/random robustness. By epoch 300, uniform L2 and the current CSR augmentation absorb the reversed shortcut strongly, while fine-tuning has lower shortcut sensitivity. This suggests that the current toy CSR objective is not yet the right method, but the trajectory metric is the correct diagnostic for the paper's Figure 1.
+
+## Streaming Stability Score Smoke Test
+
+Command pattern:
+
+```bash
+cd /home/zjj/code/continual_wsi
+/home/zjj/miniconda3/envs/clam/bin/python scripts/streaming_stability_smoke.py \
+  --seed 7 \
+  --score-power 4 \
+  --shortcut-penalty 50 \
+  --out-dir /data_2_4T/data_zjj/continual_wsi/streaming_stability/final_p4_pen50_seed7
+```
+
+Purpose:
+
+This variant makes the streaming constraint explicit. Task 1 contains proxy environment labels. The shortcut is generated from environment/style, not directly from the class label; it is predictive because environment and class are correlated. At the Task-1 boundary, the method caches only per-feature stability scores computed by residual environment correlation after conditioning on class. Task 2 then reverses the environment-label correlation and uses the cached scores, without old examples.
+
+Five-seed result at score power 4 and shortcut penalty 50:
+
+| Model | Old corr acc | Reversed acc | Neutral/random acc | Old shortcut sensitivity | Reversed shortcut sensitivity | Shortcut weight | Causal weight |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| task1_only | 0.9538 | 0.6913 | 0.8419 | 0.1097 | 0.1708 | 0.2755 | 0.2998 |
+| finetune | 0.8637 | 0.8825 | 0.8731 | 0.0139 | 0.0122 | 0.0511 | 0.6319 |
+| l2_all | 0.8700 | 0.9675 | 0.9175 | 0.0553 | 0.0415 | 0.1141 | 0.6617 |
+| oracle_score_l2 | 0.8338 | 0.9638 | 0.9087 | 0.0838 | 0.0576 | 0.1570 | 0.6141 |
+| streaming_score_l2 | 0.8400 | 0.9638 | 0.9094 | 0.0792 | 0.0552 | 0.1498 | 0.6175 |
+| streaming_score_anti | 0.8638 | 0.9725 | 0.9231 | 0.0700 | 0.0511 | 0.1020 | 0.4813 |
+| random_score_l2 | 0.8875 | 0.9563 | 0.9169 | 0.0393 | 0.0313 | 0.0859 | 0.6774 |
+
+Cached score sanity check:
+
+- Raw causal-dimension stability mean: 0.9713
+- Raw shortcut-dimension stability mean: 0.6119
+- Powered shortcut-dimension stability mean: 0.1492
+
+Interpretation:
+
+This is the first positive method signal after the toy CSR failure. The streaming score correctly separates stable causal signal from environment shortcut, and `streaming_score_anti` modestly improves neutral/random robustness over uniform L2 and random-score controls. However, shortcut sensitivity is still higher than fine-tuning and random-score L2, so the current method is not yet a decisive solution. The next iteration should combine streaming score with an explicit invariant-risk or environment-adversarial term during Task 2, because selective memory alone does not fully prevent learning the new shortcut.
