@@ -16,6 +16,7 @@ import random
 from pathlib import Path
 
 import torch
+from torch.nn import functional as F
 
 from feature_cluster_shift_smoke import (
     Logistic,
@@ -102,6 +103,75 @@ def cav_projectors(
     return torch.stack(columns[:num_probes], dim=1).contiguous(), names[:num_probes]
 
 
+def train_binary_cav(
+    x: torch.Tensor,
+    target: torch.Tensor,
+    *,
+    epochs: int,
+    lr: float,
+) -> torch.Tensor | None:
+    target = target.float()
+    num_pos = float(target.sum().item())
+    num_neg = float(target.numel() - num_pos)
+    if num_pos < 2 or num_neg < 2:
+        return None
+    weight = torch.zeros(x.shape[1], requires_grad=True)
+    bias = torch.zeros((), requires_grad=True)
+    opt = torch.optim.AdamW([weight, bias], lr=lr, weight_decay=1e-4)
+    pos_weight = torch.tensor(num_neg / max(num_pos, 1.0))
+    for _ in range(epochs):
+        logits = x @ weight + bias
+        loss = F.binary_cross_entropy_with_logits(logits, target, pos_weight=pos_weight)
+        opt.zero_grad(set_to_none=True)
+        loss.backward()
+        opt.step()
+    return normalize(weight.detach())
+
+
+def learned_cav_projectors(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    env: torch.Tensor,
+    *,
+    num_probes: int,
+    epochs: int,
+    lr: float,
+) -> tuple[torch.Tensor, list[str]]:
+    """Train TCAV-style linear probes from Task-1 pseudo-concepts.
+
+    The pseudo-concepts are intentionally simple and available in a streaming
+    setting: label, environment, label within each environment, environment
+    within each label, and cell membership. This avoids PCA while giving a
+    richer concept bank than a few mean-difference CAVs.
+    """
+    tasks: list[tuple[str, torch.Tensor, torch.Tensor]] = []
+    all_mask = torch.ones_like(y, dtype=torch.bool)
+    tasks.append(("probe_label_all", all_mask, y))
+    tasks.append(("probe_env_all", all_mask, env))
+    for ee in [0, 1]:
+        mask = env == ee
+        tasks.append((f"probe_label_env{ee}", mask, y[mask]))
+    for yy in [0, 1]:
+        mask = y == yy
+        tasks.append((f"probe_env_y{yy}", mask, env[mask]))
+    for yy in [0, 1]:
+        for ee in [0, 1]:
+            target = ((y == yy) & (env == ee)).long()
+            tasks.append((f"probe_cell_y{yy}e{ee}", all_mask, target))
+
+    columns: list[torch.Tensor] = []
+    names: list[str] = []
+    for name, mask, target in tasks:
+        if len(columns) >= num_probes:
+            break
+        probe = train_binary_cav(x[mask], target, epochs=epochs, lr=lr)
+        if probe is None:
+            continue
+        columns.append(probe)
+        names.append(name)
+    return torch.stack(columns[:num_probes], dim=1).contiguous(), names[:num_probes]
+
+
 def project_and_standardize(x: torch.Tensor, projectors: torch.Tensor, train_idx: torch.Tensor) -> torch.Tensor:
     z = x @ projectors
     return standardize(z, train_idx)
@@ -112,8 +182,10 @@ def main() -> int:
     parser.add_argument("--cache", default="/data_2_4T/data_zjj/continual_wsi/smoke_multicancer/max60_seed7/mean_features_max60_seed7.pt")
     parser.add_argument("--out-dir", default="/data_2_4T/data_zjj/continual_wsi/concept_probe_shift/seed7")
     parser.add_argument("--seed", type=int, default=7)
-    parser.add_argument("--probe-type", choices=["cav", "pca"], default="cav")
+    parser.add_argument("--probe-type", choices=["learned_cav", "cav", "pca"], default="learned_cav")
     parser.add_argument("--num-probes", type=int, default=32)
+    parser.add_argument("--probe-epochs", type=int, default=200)
+    parser.add_argument("--probe-lr", type=float, default=1e-2)
     parser.add_argument("--n-major-per-cell", type=int, default=45)
     parser.add_argument("--n-minor-per-cell", type=int, default=15)
     parser.add_argument("--n-test-per-cell", type=int, default=15)
@@ -144,7 +216,16 @@ def main() -> int:
     )
     train_idx = torch.cat([splits["task1"], splits["task2"]])
     x_std = standardize(x_raw, train_idx)
-    if args.probe_type == "cav":
+    if args.probe_type == "learned_cav":
+        projectors, probe_names = learned_cav_projectors(
+            x_std[splits["task1"]],
+            y[splits["task1"]],
+            env[splits["task1"]],
+            num_probes=args.num_probes,
+            epochs=args.probe_epochs,
+            lr=args.probe_lr,
+        )
+    elif args.probe_type == "cav":
         projectors, probe_names = cav_projectors(
             x_std[splits["task1"]],
             y[splits["task1"]],
@@ -216,6 +297,8 @@ def main() -> int:
         "probe_type": args.probe_type,
         "probe_names": probe_names,
         "num_probes": args.num_probes,
+        "probe_epochs": args.probe_epochs,
+        "probe_lr": args.probe_lr,
         "l2_lambda": args.l2_lambda,
         "score_power": args.score_power,
         "anti_threshold": args.anti_threshold,

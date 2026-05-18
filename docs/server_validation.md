@@ -348,3 +348,49 @@ Five-seed result:
 Interpretation:
 
 The no-PCA CAV result confirms the same qualitative mechanism: streaming anti-growth reduces environment dependence and old/reversed imbalance relative to L2 and random scores. But the small hand-built CAV bank has poor predictive coverage, so accuracy drops. This argues against PCA as a final concept source, but also against using only a few manual cell-contrast probes. The next implementation should learn a richer TCAV/linear-probe concept bank, then apply the same stability-memory logic.
+
+## Learned No-PCA CAV Probe Check
+
+Motivation:
+
+The hand-built CAV bank is too small. This variant trains TCAV-style linear probes from Task-1 pseudo-concepts:
+
+- label across all Task-1 slides;
+- environment across all Task-1 slides;
+- label within each environment;
+- environment within each label;
+- cell membership one-vs-rest.
+
+It still avoids PCA. Probe vectors are learned linear classifier weights, then used as concept activations.
+
+Command pattern:
+
+```bash
+cd /home/zjj/code/continual_wsi
+/home/zjj/miniconda3/envs/clam/bin/python scripts/concept_probe_shift_smoke.py \
+  --probe-type learned_cav \
+  --seed 7 \
+  --out-dir /data_2_4T/data_zjj/continual_wsi/concept_probe_shift/learned_cav_seed7
+```
+
+Five-seed result:
+
+| Model | Balanced acc | Old corr acc | Reversed acc | Worst group acc | Env-pred corr | Old-minus-reversed | Env-weighted probe use |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| task1_only | 0.7533 | 0.8400 | 0.6667 | 0.5867 | 0.1813 | 0.1733 | 0.1798 |
+| finetune | 0.8000 | 0.8400 | 0.7600 | 0.6800 | 0.1040 | 0.0800 | 0.1876 |
+| l2_all | 0.7567 | 0.8467 | 0.6667 | 0.6000 | 0.1698 | 0.1800 | 0.1764 |
+| streaming_score_l2 | 0.7700 | 0.8333 | 0.7067 | 0.6533 | 0.1236 | 0.1267 | 0.1680 |
+| streaming_score_anti | 0.7700 | 0.8267 | 0.7133 | 0.6133 | 0.0543 | 0.1133 | 0.0380 |
+| random_score_l2 | 0.7600 | 0.8267 | 0.6933 | 0.6267 | 0.1450 | 0.1333 | 0.1747 |
+
+Score sanity:
+
+- Number of learned probes: 10
+- Mean raw probe stability: 0.5626
+- Mean raw minimum probe stability: 0.3108
+- Mean powered probe stability: 0.2058
+
+Interpretation:
+
+Learned CAV probes improve accuracy over the tiny hand-built CAV bank while keeping the environment-dependence reduction effect. `streaming_score_anti` beats random-score L2 on balanced accuracy and environment correlation, but still trails fine-tuning in accuracy. This is a better no-PCA bridge result, but the next step should use more meaningful morphology concept labels or stronger learned concept probes rather than pseudo-labels derived only from `(label, environment)` cells.
