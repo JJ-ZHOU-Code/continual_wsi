@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""Concept-probe proxy shift smoke test.
+
+This is a bridge from dimension-wise CONCH scoring to concept/probe-space
+scoring. We derive a proxy environment from real slide embeddings, project
+slides into a low-dimensional probe space, score each probe activation for
+environment stability, and run continual learning in that probe space.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import random
+from pathlib import Path
+
+import torch
+
+from feature_cluster_shift_smoke import (
+    Logistic,
+    acc,
+    clone_from,
+    env_pred_corr,
+    evaluate,
+    pca_environment,
+    residual_env_corr_scores,
+    split_cells,
+    standardize,
+    train_l2,
+    train_plain,
+)
+from shortcut_reversal_smoke import load_cache
+
+
+def pca_projectors(x: torch.Tensor, k: int) -> torch.Tensor:
+    x_centered = x - x.mean(dim=0, keepdim=True)
+    _, _, vh = torch.linalg.svd(x_centered, full_matrices=False)
+    return vh[:k].T.contiguous()
+
+
+def project_and_standardize(x: torch.Tensor, projectors: torch.Tensor, train_idx: torch.Tensor) -> torch.Tensor:
+    z = x @ projectors
+    return standardize(z, train_idx)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cache", default="/data_2_4T/data_zjj/continual_wsi/smoke_multicancer/max60_seed7/mean_features_max60_seed7.pt")
+    parser.add_argument("--out-dir", default="/data_2_4T/data_zjj/continual_wsi/concept_probe_shift/seed7")
+    parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--num-probes", type=int, default=32)
+    parser.add_argument("--n-major-per-cell", type=int, default=45)
+    parser.add_argument("--n-minor-per-cell", type=int, default=15)
+    parser.add_argument("--n-test-per-cell", type=int, default=15)
+    parser.add_argument("--epochs-task1", type=int, default=300)
+    parser.add_argument("--epochs-task2", type=int, default=300)
+    parser.add_argument("--lr", type=float, default=2e-3)
+    parser.add_argument("--l2-lambda", type=float, default=20.0)
+    parser.add_argument("--score-power", type=float, default=4.0)
+    parser.add_argument("--anti-threshold", type=float, default=0.2)
+    parser.add_argument("--anti-penalty", type=float, default=500.0)
+    args = parser.parse_args()
+
+    torch.manual_seed(args.seed)
+    random.seed(args.seed)
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    x_raw, y_multi = load_cache(Path(args.cache))
+    y = (y_multi >= 4).long()
+    env = pca_environment(x_raw)
+    splits = split_cells(
+        y,
+        env,
+        n_major_per_cell=args.n_major_per_cell,
+        n_minor_per_cell=args.n_minor_per_cell,
+        n_test_per_cell=args.n_test_per_cell,
+        seed=args.seed,
+    )
+    train_idx = torch.cat([splits["task1"], splits["task2"]])
+    x_std = standardize(x_raw, train_idx)
+    projectors = pca_projectors(x_std[train_idx], args.num_probes)
+    z = project_and_standardize(x_std, projectors, train_idx)
+
+    base = Logistic(z.shape[1])
+    train_plain(base, z[splits["task1"]], y[splits["task1"]], epochs=args.epochs_task1, lr=args.lr)
+    old_state = {k: v.detach().clone() for k, v in base.state_dict().items()}
+
+    stability_raw = residual_env_corr_scores(z[splits["task1"]], y[splits["task1"]], env[splits["task1"]])
+    stability = stability_raw.pow(args.score_power)
+    random_scores = torch.rand(stability.shape, generator=torch.Generator().manual_seed(args.seed + 99))
+
+    models = {
+        "task1_only": base,
+        "finetune": train_plain(clone_from(base), z[splits["task2"]], y[splits["task2"]], epochs=args.epochs_task2, lr=args.lr),
+        "l2_all": train_l2(
+            clone_from(base),
+            z[splits["task2"]],
+            y[splits["task2"]],
+            epochs=args.epochs_task2,
+            lr=args.lr,
+            old_state=old_state,
+            l2_lambda=args.l2_lambda,
+        ),
+        "streaming_score_l2": train_l2(
+            clone_from(base),
+            z[splits["task2"]],
+            y[splits["task2"]],
+            epochs=args.epochs_task2,
+            lr=args.lr,
+            old_state=old_state,
+            l2_lambda=args.l2_lambda,
+            weights=stability,
+        ),
+        "streaming_score_anti": train_l2(
+            clone_from(base),
+            z[splits["task2"]],
+            y[splits["task2"]],
+            epochs=args.epochs_task2,
+            lr=args.lr,
+            old_state=old_state,
+            l2_lambda=args.l2_lambda,
+            weights=stability,
+            anti_threshold=args.anti_threshold,
+            anti_penalty=args.anti_penalty,
+        ),
+        "random_score_l2": train_l2(
+            clone_from(base),
+            z[splits["task2"]],
+            y[splits["task2"]],
+            epochs=args.epochs_task2,
+            lr=args.lr,
+            old_state=old_state,
+            l2_lambda=args.l2_lambda,
+            weights=random_scores,
+        ),
+    }
+
+    rows = []
+    result: dict[str, object] = {
+        "seed": args.seed,
+        "num_probes": args.num_probes,
+        "l2_lambda": args.l2_lambda,
+        "score_power": args.score_power,
+        "anti_threshold": args.anti_threshold,
+        "anti_penalty": args.anti_penalty,
+        "stability_summary": {
+            "raw_mean": float(stability_raw.mean().item()),
+            "raw_min": float(stability_raw.min().item()),
+            "raw_max": float(stability_raw.max().item()),
+            "powered_mean": float(stability.mean().item()),
+            "powered_min": float(stability.min().item()),
+            "powered_max": float(stability.max().item()),
+        },
+        "models": {},
+    }
+    for name, model in models.items():
+        metrics = evaluate(model, z, y, env, splits)
+        metrics["weight_norm"] = float(model.linear.weight.norm().item())
+        metrics["probe_env_corr_abs_weighted"] = float((model.linear.weight.norm(dim=0) * (1.0 - stability_raw)).mean().item())
+        result["models"][name] = metrics
+        rows.append({"model": name, **metrics})
+
+    (out_dir / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    with (out_dir / "summary.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    print(json.dumps(result, indent=2), flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+

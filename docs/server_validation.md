@@ -274,3 +274,40 @@ Score sanity:
 Interpretation:
 
 This real-feature proxy experiment does not show an accuracy win. Fine-tuning has the highest balanced and worst-group accuracy. However, fine-tuning also has the highest environment-prediction correlation and the largest old-vs-reversed gap among adaptive methods. `streaming_score_anti` reduces environment correlation and the old/reversed gap relative to fine-tuning, but its accuracy is similar to uniform L2. This supports a weaker but useful claim: the method trades some accuracy for reduced environment dependence on real CONCH feature structure. It is not yet enough for a main result; it is a bridge from synthetic shortcut interventions toward real-data shift experiments.
+
+## Concept-Probe Proxy Shift
+
+Motivation:
+
+The Round-5 reviewer identified a structural flaw in dimension-wise CONCH scoring: a raw embedding dimension is not a concept, and disease/shortcut information can be entangled within dimensions. This smoke test moves scoring into a low-dimensional probe space. It uses PCA probes as a placeholder for future TCAV or learned concept probes.
+
+Command pattern:
+
+```bash
+cd /home/zjj/code/continual_wsi
+/home/zjj/miniconda3/envs/clam/bin/python scripts/concept_probe_shift_smoke.py \
+  --seed 7 \
+  --num-probes 32 \
+  --out-dir /data_2_4T/data_zjj/continual_wsi/concept_probe_shift/seed7
+```
+
+Five-seed result with 32 PCA probes:
+
+| Model | Balanced acc | Old corr acc | Reversed acc | Worst group acc | Env-pred corr | Old-minus-reversed | Env-weighted probe use |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| task1_only | 0.7500 | 0.8067 | 0.6933 | 0.5867 | 0.1270 | 0.1133 | 0.0261 |
+| finetune | 0.8333 | 0.8933 | 0.7733 | 0.6667 | 0.1386 | 0.1200 | 0.0305 |
+| l2_all | 0.7867 | 0.8533 | 0.7200 | 0.6533 | 0.1325 | 0.1333 | 0.0255 |
+| streaming_score_l2 | 0.7900 | 0.8333 | 0.7467 | 0.6667 | 0.0872 | 0.0867 | 0.0230 |
+| streaming_score_anti | 0.7900 | 0.8000 | 0.7800 | 0.6400 | 0.0029 | 0.0200 | 0.0179 |
+| random_score_l2 | 0.8033 | 0.8533 | 0.7533 | 0.6667 | 0.1182 | 0.1000 | 0.0250 |
+
+Score sanity:
+
+- Mean raw probe stability: 0.9199
+- Mean raw minimum probe stability: 0.3734
+- Mean powered probe stability: 0.7615
+
+Interpretation:
+
+Concept/probe-space scoring does not yet recover the accuracy of raw CONCH features. Fine-tuning remains the accuracy leader. However, the concept-probe `streaming_score_anti` almost eliminates environment-prediction correlation and old/reversed imbalance, substantially better than random-score L2. This directly addresses the earlier dimension-wise scoring blocker and suggests the next method iteration should use stronger learned/TCAV probes rather than PCA probes.
