@@ -200,3 +200,34 @@ Cached score sanity check:
 Interpretation:
 
 This is the first positive method signal after the toy CSR failure. The streaming score correctly separates stable causal signal from environment shortcut, and `streaming_score_anti` modestly improves neutral/random robustness over uniform L2 and random-score controls. However, shortcut sensitivity is still higher than fine-tuning and random-score L2, so the current method is not yet a decisive solution. The next iteration should combine streaming score with an explicit invariant-risk or environment-adversarial term during Task 2, because selective memory alone does not fully prevent learning the new shortcut.
+
+## Thresholded Anti-Growth Fix
+
+Round-3 reviewer criticism:
+
+Low-stability features receiving low L2 can freely relearn the Task-2 shortcut. The fix is to add an explicit growth penalty on dimensions whose cached stability is below a threshold.
+
+Best stable five-seed setting:
+
+```bash
+cd /home/zjj/code/continual_wsi
+/home/zjj/miniconda3/envs/clam/bin/python scripts/streaming_stability_smoke.py \
+  --seed 7 \
+  --score-power 4 \
+  --anti-threshold 0.2 \
+  --shortcut-penalty 500 \
+  --out-dir /data_2_4T/data_zjj/continual_wsi/streaming_stability/final_th0.2_pen500_seed7
+```
+
+Five-seed result:
+
+| Model | Old corr acc | Reversed acc | Neutral/random acc | Old shortcut sensitivity | Reversed shortcut sensitivity | Shortcut weight | Causal weight |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| finetune | 0.8637 | 0.8825 | 0.8731 | 0.0139 | 0.0122 | 0.0511 | 0.6319 |
+| l2_all | 0.8700 | 0.9675 | 0.9175 | 0.0553 | 0.0415 | 0.1141 | 0.6617 |
+| random_score_l2 | 0.8875 | 0.9563 | 0.9169 | 0.0393 | 0.0313 | 0.0859 | 0.6774 |
+| streaming_score_anti | 0.9112 | 0.9300 | 0.9188 | 0.0160 | 0.0114 | 0.0304 | 0.6650 |
+
+Interpretation:
+
+The thresholded anti-growth variant passes the current reviewer gate: shortcut sensitivity is lower than random-score L2, causal weight is slightly higher than uniform L2, and neutral/random robustness is slightly higher than both uniform L2 and random-score L2. The tradeoff is lower reversed-correlation accuracy than L2, which is acceptable if the paper frames the goal as avoiding shortcut rewriting rather than maximizing performance on the newest shortcut-correlated environment.

@@ -142,6 +142,7 @@ def train_with_weighted_l2(
     l2_lambda: float,
     anti_shortcut: bool = False,
     shortcut_penalty: float = 0.0,
+    anti_threshold: float | None = None,
 ) -> nn.Module:
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     old_weight = old_state["linear.weight"].detach().clone()
@@ -155,9 +156,12 @@ def train_with_weighted_l2(
         loss = loss + l2_lambda * weighted_diff.sum() / weights.sum().clamp_min(1e-8)
         loss = loss + l2_lambda * 0.1 * (model.linear.bias - old_bias).pow(2).mean()
         if anti_shortcut:
-            low_stability = (1.0 - feature_weights).view(1, -1)
-            anti = cur_w.pow(2) * low_stability
-            loss = loss + shortcut_penalty * anti.sum() / low_stability.sum().clamp_min(1e-8)
+            if anti_threshold is None:
+                low_weight = (1.0 - feature_weights).view(1, -1)
+            else:
+                low_weight = (feature_weights < anti_threshold).float().view(1, -1)
+            anti = cur_w.pow(2) * low_weight
+            loss = loss + shortcut_penalty * anti.sum() / low_weight.sum().clamp_min(1e-8)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         opt.step()
@@ -217,6 +221,7 @@ def main() -> int:
     parser.add_argument("--l2-lambda", type=float, default=80.0)
     parser.add_argument("--shortcut-penalty", type=float, default=0.5)
     parser.add_argument("--score-power", type=float, default=1.0)
+    parser.add_argument("--anti-threshold", type=float, default=-1.0)
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -316,6 +321,7 @@ def main() -> int:
             l2_lambda=args.l2_lambda,
             anti_shortcut=True,
             shortcut_penalty=args.shortcut_penalty,
+            anti_threshold=args.anti_threshold if args.anti_threshold >= 0 else None,
         ),
         "random_score_l2": train_with_weighted_l2(
             clone_from(base),
@@ -339,6 +345,7 @@ def main() -> int:
         "l2_lambda": args.l2_lambda,
         "shortcut_penalty": args.shortcut_penalty,
         "score_power": args.score_power,
+        "anti_threshold": args.anti_threshold,
         "stability_summary": {
             "raw_causal_dim": float(raw_stability[-2].item()),
             "raw_shortcut_dim": float(raw_stability[-1].item()),
