@@ -19,3 +19,7 @@ Standard continual-learning regularization may preserve shortcut correlations as
 1. Audit available TCGA features and labels.
 2. Build a minimal feature-level MIL/classifier benchmark from pre-extracted CONCH features.
 3. Test controlled shortcut reversal before implementing full causal-selective regularization.
+## Environment
+
+See docs/environment.md for server paths, conda environments, storage policy, and package mirror notes.
+
