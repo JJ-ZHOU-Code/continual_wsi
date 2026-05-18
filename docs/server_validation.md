@@ -231,3 +231,46 @@ Five-seed result:
 Interpretation:
 
 The thresholded anti-growth variant passes the current reviewer gate: shortcut sensitivity is lower than random-score L2, causal weight is slightly higher than uniform L2, and neutral/random robustness is slightly higher than both uniform L2 and random-score L2. The tradeoff is lower reversed-correlation accuracy than L2, which is acceptable if the paper frames the goal as avoiding shortcut rewriting rather than maximizing performance on the newest shortcut-correlated environment.
+
+## Real-Feature Cluster Proxy Shift
+
+Motivation:
+
+Directly using TCGA `tss` as an environment shortcut across cancer types is unsafe because `tss` and cancer label are nearly perfectly confounded in the current multicancer index. Many sites appear only within one cancer project. Instead, this smoke test derives a proxy environment from the first PCA direction of real CONCH slide embeddings, then samples Task 1 and Task 2 with opposite label-environment correlations.
+
+Important design correction:
+
+The first hard-correlated version used only `(y=0,e=0)` and `(y=1,e=1)` in Task 1. That made environment constant within each label, so conditional environment-dependence scores were unidentifiable and all stability scores became 1. The corrected version uses soft correlation: each task has major and minor cells, so both environments appear within each label.
+
+Command pattern:
+
+```bash
+cd /home/zjj/code/continual_wsi
+/home/zjj/miniconda3/envs/clam/bin/python scripts/feature_cluster_shift_smoke.py \
+  --seed 7 \
+  --l2-lambda 20 \
+  --anti-penalty 500 \
+  --anti-threshold 0.2 \
+  --out-dir /data_2_4T/data_zjj/continual_wsi/feature_cluster_shift/final_l220_pen500_th0.2_seed7
+```
+
+Five-seed result:
+
+| Model | Balanced acc | Old corr acc | Reversed acc | Worst group acc | Env-pred corr | Old-minus-reversed |
+|---|---:|---:|---:|---:|---:|---:|
+| task1_only | 0.7800 | 0.8467 | 0.7133 | 0.6000 | 0.1222 | 0.1333 |
+| finetune | 0.9033 | 0.9733 | 0.8333 | 0.7733 | 0.1531 | 0.1400 |
+| l2_all | 0.8733 | 0.9000 | 0.8467 | 0.7467 | 0.0928 | 0.0533 |
+| streaming_score_l2 | 0.8733 | 0.9200 | 0.8267 | 0.7333 | 0.1025 | 0.0933 |
+| streaming_score_anti | 0.8733 | 0.9000 | 0.8467 | 0.7333 | 0.0898 | 0.0533 |
+| random_score_l2 | 0.8800 | 0.9200 | 0.8400 | 0.7467 | 0.0975 | 0.0800 |
+
+Score sanity:
+
+- Mean raw stability: 0.7860
+- Mean raw minimum stability: 0.4161
+- Mean powered stability: 0.4508
+
+Interpretation:
+
+This real-feature proxy experiment does not show an accuracy win. Fine-tuning has the highest balanced and worst-group accuracy. However, fine-tuning also has the highest environment-prediction correlation and the largest old-vs-reversed gap among adaptive methods. `streaming_score_anti` reduces environment correlation and the old/reversed gap relative to fine-tuning, but its accuracy is similar to uniform L2. This supports a weaker but useful claim: the method trades some accuracy for reduced environment dependence on real CONCH feature structure. It is not yet enough for a main result; it is a bridge from synthetic shortcut interventions toward real-data shift experiments.
