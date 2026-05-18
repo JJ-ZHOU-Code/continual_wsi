@@ -3,7 +3,7 @@
 
 This is a bridge from dimension-wise CONCH scoring to concept/probe-space
 scoring. We derive a proxy environment from real slide embeddings, project
-slides into a low-dimensional probe space, score each probe activation for
+slides into CAV-style contrast probes, score each probe activation for
 environment stability, and run continual learning in that probe space.
 """
 
@@ -39,6 +39,69 @@ def pca_projectors(x: torch.Tensor, k: int) -> torch.Tensor:
     return vh[:k].T.contiguous()
 
 
+def normalize(v: torch.Tensor) -> torch.Tensor:
+    return v / v.norm().clamp_min(1e-8)
+
+
+def cell_mean(x: torch.Tensor, y: torch.Tensor, env: torch.Tensor, yy: int, ee: int) -> torch.Tensor:
+    mask = (y == yy) & (env == ee)
+    if int(mask.sum().item()) == 0:
+        raise ValueError(f"Missing cell y={yy}, env={ee}")
+    return x[mask].mean(dim=0)
+
+
+def orthogonal_append(columns: list[torch.Tensor], candidate: torch.Tensor, eps: float = 1e-6) -> bool:
+    v = candidate.clone()
+    for col in columns:
+        v = v - (v @ col) * col
+    norm = v.norm()
+    if float(norm.item()) < eps:
+        return False
+    columns.append(v / norm)
+    return True
+
+
+def cav_projectors(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    env: torch.Tensor,
+    *,
+    num_probes: int,
+) -> tuple[torch.Tensor, list[str]]:
+    """Build a no-PCA bank of CAV-style Task-1 contrast probes.
+
+    These are not final pathology concepts, but they are closer to TCAV/CBM
+    practice than PCA: each direction is a supervised contrast in Task-1 cells.
+    """
+    m00 = cell_mean(x, y, env, 0, 0)
+    m01 = cell_mean(x, y, env, 0, 1)
+    m10 = cell_mean(x, y, env, 1, 0)
+    m11 = cell_mean(x, y, env, 1, 1)
+    global_mean = 0.25 * (m00 + m01 + m10 + m11)
+    candidates = [
+        ("label_cav", 0.5 * (m10 + m11) - 0.5 * (m00 + m01)),
+        ("env_cav", 0.5 * (m01 + m11) - 0.5 * (m00 + m10)),
+        ("label_cav_env0", m10 - m00),
+        ("label_cav_env1", m11 - m01),
+        ("env_cav_y0", m01 - m00),
+        ("env_cav_y1", m11 - m10),
+        ("interaction_cav", (m11 - m10) - (m01 - m00)),
+        ("cell_y0e0", m00 - global_mean),
+        ("cell_y0e1", m01 - global_mean),
+        ("cell_y1e0", m10 - global_mean),
+        ("cell_y1e1", m11 - global_mean),
+    ]
+
+    columns: list[torch.Tensor] = []
+    names: list[str] = []
+    for name, direction in candidates:
+        if len(columns) >= num_probes:
+            break
+        if orthogonal_append(columns, normalize(direction)):
+            names.append(name)
+    return torch.stack(columns[:num_probes], dim=1).contiguous(), names[:num_probes]
+
+
 def project_and_standardize(x: torch.Tensor, projectors: torch.Tensor, train_idx: torch.Tensor) -> torch.Tensor:
     z = x @ projectors
     return standardize(z, train_idx)
@@ -49,6 +112,7 @@ def main() -> int:
     parser.add_argument("--cache", default="/data_2_4T/data_zjj/continual_wsi/smoke_multicancer/max60_seed7/mean_features_max60_seed7.pt")
     parser.add_argument("--out-dir", default="/data_2_4T/data_zjj/continual_wsi/concept_probe_shift/seed7")
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--probe-type", choices=["cav", "pca"], default="cav")
     parser.add_argument("--num-probes", type=int, default=32)
     parser.add_argument("--n-major-per-cell", type=int, default=45)
     parser.add_argument("--n-minor-per-cell", type=int, default=15)
@@ -80,7 +144,16 @@ def main() -> int:
     )
     train_idx = torch.cat([splits["task1"], splits["task2"]])
     x_std = standardize(x_raw, train_idx)
-    projectors = pca_projectors(x_std[train_idx], args.num_probes)
+    if args.probe_type == "cav":
+        projectors, probe_names = cav_projectors(
+            x_std[splits["task1"]],
+            y[splits["task1"]],
+            env[splits["task1"]],
+            num_probes=args.num_probes,
+        )
+    else:
+        projectors = pca_projectors(x_std[train_idx], args.num_probes)
+        probe_names = [f"pca_{i}" for i in range(projectors.shape[1])]
     z = project_and_standardize(x_std, projectors, train_idx)
 
     base = Logistic(z.shape[1])
@@ -140,6 +213,8 @@ def main() -> int:
     rows = []
     result: dict[str, object] = {
         "seed": args.seed,
+        "probe_type": args.probe_type,
+        "probe_names": probe_names,
         "num_probes": args.num_probes,
         "l2_lambda": args.l2_lambda,
         "score_power": args.score_power,

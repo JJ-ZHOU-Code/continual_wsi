@@ -311,3 +311,40 @@ Score sanity:
 Interpretation:
 
 Concept/probe-space scoring does not yet recover the accuracy of raw CONCH features. Fine-tuning remains the accuracy leader. However, the concept-probe `streaming_score_anti` almost eliminates environment-prediction correlation and old/reversed imbalance, substantially better than random-score L2. This directly addresses the earlier dimension-wise scoring blocker and suggests the next method iteration should use stronger learned/TCAV probes rather than PCA probes.
+
+## No-PCA CAV Probe Check
+
+Motivation:
+
+PCA probes are useful as a quick diagnostic but should not be part of the main method, because existing concept-learning work typically uses CAV/TCAV/CBM-style probes rather than PCA as the concept source. The no-PCA check replaces PCA probes with Task-1 cell-contrast CAV directions:
+
+- label CAV;
+- environment CAV;
+- label-within-environment CAVs;
+- environment-within-label CAVs;
+- interaction/cell contrast CAVs.
+
+Command pattern:
+
+```bash
+cd /home/zjj/code/continual_wsi
+/home/zjj/miniconda3/envs/clam/bin/python scripts/concept_probe_shift_smoke.py \
+  --probe-type cav \
+  --seed 7 \
+  --out-dir /data_2_4T/data_zjj/continual_wsi/concept_probe_shift/cav_seed7
+```
+
+Five-seed result:
+
+| Model | Balanced acc | Old corr acc | Reversed acc | Worst group acc | Env-pred corr | Old-minus-reversed | Env-weighted probe use |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| task1_only | 0.7233 | 0.8467 | 0.6000 | 0.4667 | 0.3517 | 0.2467 | 0.1971 |
+| finetune | 0.7700 | 0.8200 | 0.7200 | 0.6133 | 0.1430 | 0.1000 | 0.2460 |
+| l2_all | 0.7300 | 0.8467 | 0.6133 | 0.4667 | 0.3406 | 0.2333 | 0.1973 |
+| streaming_score_l2 | 0.7433 | 0.8600 | 0.6267 | 0.5067 | 0.3097 | 0.2333 | 0.1890 |
+| streaming_score_anti | 0.7067 | 0.7600 | 0.6533 | 0.4267 | 0.1016 | 0.1067 | 0.0736 |
+| random_score_l2 | 0.7300 | 0.8467 | 0.6133 | 0.4667 | 0.3143 | 0.2333 | 0.1985 |
+
+Interpretation:
+
+The no-PCA CAV result confirms the same qualitative mechanism: streaming anti-growth reduces environment dependence and old/reversed imbalance relative to L2 and random scores. But the small hand-built CAV bank has poor predictive coverage, so accuracy drops. This argues against PCA as a final concept source, but also against using only a few manual cell-contrast probes. The next implementation should learn a richer TCAV/linear-probe concept bank, then apply the same stability-memory logic.
