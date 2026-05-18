@@ -35,7 +35,7 @@ def first_lines(path: Path, n: int = 3) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-root', default='/data_1_16T/data_tcga')
-    parser.add_argument('--out', default='/data_1_16T/data_zjj/continual_wsi/audits/tcga_feature_audit.md')
+    parser.add_argument('--out', default='/data_2_4T/data_zjj/continual_wsi/audits/tcga_feature_audit.md')
     args = parser.parse_args()
 
     root = Path(args.data_root)

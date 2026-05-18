@@ -11,7 +11,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-root', default='/data_1_16T/data_tcga')
     parser.add_argument('--feature-name', default='feats-l0-s1024-CONCH')
-    parser.add_argument('--out', default='/data_1_16T/data_zjj/continual_wsi/indices/multicancer_conch_s1024.csv')
+    parser.add_argument('--out', default='/data_2_4T/data_zjj/continual_wsi/indices/multicancer_conch_s1024.csv')
     args = parser.parse_args()
 
     root = Path(args.data_root)

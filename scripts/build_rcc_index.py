@@ -11,7 +11,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--label-csv', default='/data_1_16T/data_tcga/rcc/download/TCGA_RCC_path_subtype.csv')
     parser.add_argument('--feat-dir', default='/data_1_16T/data_tcga/rcc/ExpData/feats-l0-s1024-CONCH/pt_files')
-    parser.add_argument('--out', default='/data_1_16T/data_zjj/continual_wsi/indices/rcc_subtype_conch_s1024.csv')
+    parser.add_argument('--out', default='/data_2_4T/data_zjj/continual_wsi/indices/rcc_subtype_conch_s1024.csv')
     args = parser.parse_args()
 
     label_csv = Path(args.label_csv)

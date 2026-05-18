@@ -123,8 +123,8 @@ def evaluate(model: nn.Module, x: torch.Tensor, y: torch.Tensor, batch_size: int
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--index", default="/data_1_16T/data_zjj/continual_wsi/indices/multicancer_conch_s1024.csv")
-    parser.add_argument("--out-dir", default="/data_1_16T/data_zjj/continual_wsi/smoke_multicancer")
+    parser.add_argument("--index", default="/data_2_4T/data_zjj/continual_wsi/indices/multicancer_conch_s1024.csv")
+    parser.add_argument("--out-dir", default="/data_2_4T/data_zjj/continual_wsi/smoke_multicancer")
     parser.add_argument("--max-per-class", type=int, default=80)
     parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--batch-size", type=int, default=64)
