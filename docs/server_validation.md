@@ -124,3 +124,40 @@ Aggregate observations:
 Interpretation:
 
 The automated sweep supports the failure-mode claim more strongly than the method claim. The next method iteration should not spend time tuning the toy shortcut penalty. It should implement streaming environment-invariant concept scoring, then test whether selective consolidation based on estimated scores improves intervention robustness beyond fine-tuning and uniform consolidation.
+
+## Shortcut Carryover Trajectory
+
+Command pattern:
+
+```bash
+cd /home/zjj/code/continual_wsi
+/home/zjj/miniconda3/envs/clam/bin/python scripts/shortcut_trajectory_smoke.py \
+  --seed 7 \
+  --out-dir /data_2_4T/data_zjj/continual_wsi/shortcut_trajectory/seed7_str6_l280_pen0p1
+```
+
+Multi-seed outputs:
+
+- /data_2_4T/data_zjj/continual_wsi/shortcut_trajectory/seed7_str6_l280_pen0p1
+- /data_2_4T/data_zjj/continual_wsi/shortcut_trajectory/seed11_str6_l280_pen0p1
+- /data_2_4T/data_zjj/continual_wsi/shortcut_trajectory/seed13_str6_l280_pen0p1
+- /data_2_4T/data_zjj/continual_wsi/shortcut_trajectory/seed17_str6_l280_pen0p1
+- /data_2_4T/data_zjj/continual_wsi/shortcut_trajectory/seed19_str6_l280_pen0p1
+
+Five-seed trajectory means at shortcut strength 6, L2 80, penalty 0.1:
+
+| Model | Task-2 epoch | Old corr acc | Reversed acc | Neutral/random acc | Old shortcut sensitivity | Reversed shortcut sensitivity |
+|---|---:|---:|---:|---:|---:|---:|
+| finetune | 0 | 0.9500 | 0.5563 | 0.7913 | 0.1391 | 0.2221 |
+| finetune | 100 | 0.8363 | 0.7813 | 0.8119 | 0.0289 | 0.0310 |
+| finetune | 300 | 0.7612 | 0.8300 | 0.8012 | 0.0407 | 0.0343 |
+| l2_all | 0 | 0.9500 | 0.5563 | 0.7913 | 0.1391 | 0.2221 |
+| l2_all | 100 | 0.8387 | 0.7687 | 0.8031 | 0.0339 | 0.0370 |
+| l2_all | 300 | 0.6350 | 0.9262 | 0.7869 | 0.1564 | 0.1139 |
+| csr_aug | 0 | 0.9500 | 0.5563 | 0.7913 | 0.1391 | 0.2221 |
+| csr_aug | 100 | 0.8413 | 0.7675 | 0.8031 | 0.0339 | 0.0369 |
+| csr_aug | 300 | 0.6625 | 0.9225 | 0.7956 | 0.1350 | 0.1010 |
+
+Interpretation:
+
+The trajectory reveals a non-monotonic effect hidden by endpoint tables. Around epoch 100, all methods reduce shortcut sensitivity and reach better neutral/random robustness. By epoch 300, uniform L2 and the current CSR augmentation absorb the reversed shortcut strongly, while fine-tuning has lower shortcut sensitivity. This suggests that the current toy CSR objective is not yet the right method, but the trajectory metric is the correct diagnostic for the paper's Figure 1.
