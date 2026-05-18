@@ -29,8 +29,6 @@ def load_cache(path: Path) -> tuple[torch.Tensor, torch.Tensor]:
     payload = torch.load(path, map_location="cpu")
     x = payload["x"].float()
     y_multi = payload["y"].long()
-    # Balanced binary split from 8 cancer labels: labels 0-3 vs 4-7.
-    y = (y_multi >= 4).long()
     return x, y_multi
 
 
@@ -231,6 +229,7 @@ def main() -> int:
 
     results: dict[str, object] = {
         "cache": args.cache,
+        "seed": args.seed,
         "num_env1": int(len(y1)),
         "num_env2": int(len(y2)),
         "num_test": int(len(splits["test"])),

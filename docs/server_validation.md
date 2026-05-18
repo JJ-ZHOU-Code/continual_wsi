@@ -90,3 +90,37 @@ This is not yet a final method result. It is useful because it cleanly validates
 1. Run multi-seed shortcut reversal with varied shortcut strength and L2 coefficients.
 2. Add a metric for shortcut reliance, such as accuracy gap between old-correlation and neutral/reversed interventions.
 3. Implement data-driven shortcut/concept scoring so CSR does not rely on knowing the appended shortcut dimensions.
+
+## Automated Shortcut Sweep
+
+Command:
+
+```bash
+cd /home/zjj/code/continual_wsi
+scripts/launch_shortcut_sweep.sh auto_20260518_round1
+```
+
+Output:
+
+- /data_2_4T/data_zjj/continual_wsi/shortcut_sweeps/auto_20260518_round1
+- /data_2_4T/data_zjj/continual_wsi/shortcut_sweeps/auto_20260518_round1/summary.csv
+- /data_2_4T/data_zjj/continual_wsi/shortcut_sweeps/auto_20260518_round1/aggregate.json
+
+Grid:
+
+- Seeds: 7, 11, 13, 17, 19
+- Shortcut strengths: 2, 4, 6, 8
+- L2 coefficients: 20, 80
+- Shortcut penalties: 0.0, 0.1
+- Completed cells: 80 / 80
+
+Aggregate observations:
+
+- `task1_only` has a large old-vs-reversed shortcut gap: old correlation 0.9278 vs. reversed 0.6041, gap +0.3237.
+- `finetune` adapts to the reversed environment but does not preserve old shortcut behavior: old correlation 0.7725 vs. reversed 0.8284.
+- `l2_all` and `selective_l2` favor the latest reversed shortcut and do not improve neutral/random robustness over fine-tuning.
+- `csr_aug` slightly improves robustness over uniform L2, but not over fine-tuning: neutral/random mean 0.8000 vs. L2 0.7947 and fine-tune 0.8045.
+
+Interpretation:
+
+The automated sweep supports the failure-mode claim more strongly than the method claim. The next method iteration should not spend time tuning the toy shortcut penalty. It should implement streaming environment-invariant concept scoring, then test whether selective consolidation based on estimated scores improves intervention robustness beyond fine-tuning and uniform consolidation.
