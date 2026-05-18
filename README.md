@@ -6,7 +6,7 @@ Research code for continual whole-slide image learning experiments.
 
 - Code: /home/zjj/code/continual_wsi
 - Data: /data_1_16T/data_tcga
-- Outputs / intermediate files: /data_1_16T/data_zjj/continual_wsi
+- Outputs / intermediate files: /data_2_4T/data_zjj/continual_wsi
 
 ## Current Direction
 

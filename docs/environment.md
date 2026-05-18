@@ -4,7 +4,7 @@
 
 - SSH host: A6000-tailscale
 - Code entry path: /home/zjj/code/continual_wsi
-- Actual code storage: /data_1_16T/data_zjj/continual_wsi/code/continual_wsi
+- Actual code storage: /data_2_4T/data_zjj/continual_wsi/code/continual_wsi
 - Main TCGA data: /data_1_16T/data_tcga
 
 /home is full, so the code path under ~/code is a symlink to the data disk.
@@ -14,7 +14,7 @@
 Use these paths consistently:
 
 - Code: /home/zjj/code/continual_wsi
-- Main outputs and intermediate results: /data_1_16T/data_zjj/continual_wsi
+- Main outputs and intermediate results: /data_2_4T/data_zjj/continual_wsi
 - Spillover outputs when /data_1_16T is tight: /data_2_4T/data_zjj/continual_wsi if available/created
 
 Current space snapshot:

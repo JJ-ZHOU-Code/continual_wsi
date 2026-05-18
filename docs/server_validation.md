@@ -5,9 +5,9 @@ Date: 2026-05-18
 ## Paths
 
 - Code entry: /home/zjj/code/continual_wsi
-- Actual code storage: /data_1_16T/data_zjj/continual_wsi/code/continual_wsi
+- Actual code storage: /data_2_4T/data_zjj/continual_wsi/code/continual_wsi
 - Data: /data_1_16T/data_tcga
-- Outputs: /data_1_16T/data_zjj/continual_wsi
+- Outputs: /data_2_4T/data_zjj/continual_wsi
 
 /home is full, so ~/code/continual_wsi is a symlink to the data-disk code directory.
 
@@ -21,8 +21,8 @@ The data root contains enough pre-extracted features for basic experiments.
 
 Built indices:
 
-- /data_1_16T/data_zjj/continual_wsi/indices/multicancer_conch_s1024.csv
-- /data_1_16T/data_zjj/continual_wsi/indices/rcc_subtype_conch_s1024.csv
+- /data_2_4T/data_zjj/continual_wsi/indices/multicancer_conch_s1024.csv
+- /data_2_4T/data_zjj/continual_wsi/indices/rcc_subtype_conch_s1024.csv
 
 The multicancer CONCH index has 6,846 slides across 8 cancer labels.
 
@@ -36,7 +36,7 @@ cd /home/zjj/code/continual_wsi
   --max-per-class 60 \
   --epochs 60 \
   --batch-size 64 \
-  --out-dir /data_1_16T/data_zjj/continual_wsi/smoke_multicancer/max60_seed7
+  --out-dir /data_2_4T/data_zjj/continual_wsi/smoke_multicancer/max60_seed7
 `
 
 Result:
@@ -46,7 +46,7 @@ Result:
 - Train/test split: 384/96
 - Best test accuracy: 0.8125 at epoch 20
 - Final test accuracy: 0.75
-- Output: /data_1_16T/data_zjj/continual_wsi/smoke_multicancer/max60_seed7/result.json
+- Output: /data_2_4T/data_zjj/continual_wsi/smoke_multicancer/max60_seed7/result.json
 
 ## Notes
 
