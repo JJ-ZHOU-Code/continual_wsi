@@ -460,6 +460,7 @@ def main() -> int:
     parser.add_argument("--relevance-power", type=float, default=2.0)
     parser.add_argument("--anti-threshold", type=float, default=0.05)
     parser.add_argument("--anti-penalty", type=float, default=1.0)
+    parser.add_argument("--anchor-floor", type=float, default=0.0)
     parser.add_argument("--subspace-lambda", type=float, default=2.0)
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--text-device", default="cpu")
@@ -501,6 +502,8 @@ def main() -> int:
     stable_mask = anchor >= args.anti_threshold
     random_scores = torch.rand(anchor.shape, generator=torch.Generator().manual_seed(args.seed + 1000))
 
+    anchor_train = anchor.clamp_min(args.anchor_floor)
+
     models = {
         "task1_only": base,
         "finetune": train_model(clone_model(base), z_train[splits["task2"]], y[splits["task2"]], epochs=args.epochs_task2, lr=args.lr),
@@ -541,7 +544,7 @@ def main() -> int:
             lr=args.lr,
             old_state=old_state,
             l2_lambda=args.l2_lambda,
-            weights=anchor,
+            weights=anchor_train,
             anti_threshold=args.anti_threshold,
             anti_penalty=args.anti_penalty,
             subspace_lambda=args.subspace_lambda,
@@ -561,6 +564,7 @@ def main() -> int:
             "anchor_mean": float(anchor.mean().item()),
             "anchor_min": float(anchor.min().item()),
             "anchor_max": float(anchor.max().item()),
+            "anchor_floor": float(args.anchor_floor),
             "stable_count": int(stable_mask.sum().item()),
         },
         "concept_scores": [
