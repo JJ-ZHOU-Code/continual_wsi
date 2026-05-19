@@ -102,6 +102,62 @@ def load_cache(path: Path) -> tuple[torch.Tensor, torch.Tensor, list[dict[str, s
     return payload["x"].float(), payload["y"].long(), list(payload["meta"])
 
 
+def load_index_features(
+    path: Path,
+    *,
+    positive_label: str,
+    negative_label: str,
+    max_per_label: int | None,
+    seed: int,
+) -> tuple[torch.Tensor, torch.Tensor, list[dict[str, str]]]:
+    rows: list[dict[str, str]] = []
+    with path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            label = str(row.get("label", ""))
+            if label not in {positive_label, negative_label}:
+                continue
+            rows.append(row)
+    if not rows:
+        raise ValueError(f"No rows matched positive={positive_label!r} negative={negative_label!r} in {path}")
+
+    rng = random.Random(seed)
+    by_label: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in rows:
+        by_label[str(row.get("label", ""))].append(row)
+    kept: list[dict[str, str]] = []
+    for label, label_rows in sorted(by_label.items()):
+        rng.shuffle(label_rows)
+        kept.extend(label_rows[:max_per_label] if max_per_label else label_rows)
+    rng.shuffle(kept)
+
+    feats: list[torch.Tensor] = []
+    labels: list[int] = []
+    meta: list[dict[str, str]] = []
+    for row in kept:
+        feat_path = Path(row["feature_path"])
+        feat = torch.load(feat_path, map_location="cpu").float()
+        if feat.ndim == 1:
+            mean_feat = feat
+        else:
+            mean_feat = feat.mean(dim=0)
+        label = str(row.get("label", ""))
+        case_id = row.get("case_id", "")
+        parts = case_id.split("-")
+        tss = parts[1] if len(parts) > 1 else row.get("tss", "")
+        feats.append(mean_feat)
+        labels.append(1 if label == positive_label else 0)
+        meta.append({
+            "case_id": case_id,
+            "slide_id": row.get("slide_id", ""),
+            "subtype": row.get("subtype", ""),
+            "label": label,
+            "tss": tss,
+            "feature_path": str(feat_path),
+        })
+    return torch.stack(feats).float(), torch.tensor(labels).long(), meta
+
+
 def standardize(x: torch.Tensor, train_idx: torch.Tensor) -> torch.Tensor:
     mu = x[train_idx].mean(dim=0, keepdim=True)
     sd = x[train_idx].std(dim=0, keepdim=True).clamp_min(1e-6)
@@ -447,6 +503,10 @@ def evaluate(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", default="/data_2_4T/data_zjj/continual_wsi/smoke_multicancer/max60_seed7/mean_features_max60_seed7.pt")
+    parser.add_argument("--index-csv", default="")
+    parser.add_argument("--positive-label", default="1")
+    parser.add_argument("--negative-label", default="0")
+    parser.add_argument("--max-per-label", type=int, default=0)
     parser.add_argument("--out-dir", default="/data_2_4T/data_zjj/continual_wsi/conch_text_concepts/seed7")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--n-major-per-cell", type=int, default=45)
@@ -475,8 +535,17 @@ def main() -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    x_raw, y_multi, meta = load_cache(Path(args.cache))
-    y = (y_multi >= 4).long()
+    if args.index_csv:
+        x_raw, y, meta = load_index_features(
+            Path(args.index_csv),
+            positive_label=args.positive_label,
+            negative_label=args.negative_label,
+            max_per_label=args.max_per_label or None,
+            seed=args.seed,
+        )
+    else:
+        x_raw, y_multi, meta = load_cache(Path(args.cache))
+        y = (y_multi >= 4).long()
     env, env_info = tss_supergroup_env(meta, y, args.seed)
     splits = split_cells(
         y,
