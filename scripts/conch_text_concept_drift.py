@@ -524,6 +524,7 @@ def main() -> int:
     parser.add_argument("--fallback-strength", type=float, default=0.0)
     parser.add_argument("--fallback-tau", type=float, default=0.02)
     parser.add_argument("--fallback-relevance-power", type=float, default=1.0)
+    parser.add_argument("--fallback-mode", choices=["task1", "task2", "max", "shift"], default="task1")
     parser.add_argument("--subspace-lambda", type=float, default=2.0)
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--text-device", default="cpu")
@@ -570,11 +571,20 @@ def main() -> int:
 
     env_stability = residual_env_corr_scores(z_train[splits["task1"]], y[splits["task1"]], env[splits["task1"]])
     relevance = label_relevance_scores(z_train[splits["task1"]], y[splits["task1"]])
+    task2_relevance = label_relevance_scores(z_train[splits["task2"]], y[splits["task2"]])
     anchor = env_stability.pow(args.score_power) * relevance.pow(args.relevance_power)
     stable_mask = anchor >= args.anti_threshold
     random_scores = torch.rand(anchor.shape, generator=torch.Generator().manual_seed(args.seed + 1000))
 
-    fallback = relevance.pow(args.fallback_relevance_power)
+    if args.fallback_mode == "task2":
+        fallback_source = task2_relevance
+    elif args.fallback_mode == "max":
+        fallback_source = torch.maximum(relevance, task2_relevance)
+    elif args.fallback_mode == "shift":
+        fallback_source = (task2_relevance - relevance).clamp_min(0.0)
+    else:
+        fallback_source = relevance
+    fallback = fallback_source.pow(args.fallback_relevance_power)
     fallback_gate = anchor / (anchor + args.fallback_tau)
     anchor_train = (fallback_gate * anchor) + ((1.0 - fallback_gate) * args.fallback_strength * fallback)
     anchor_train = anchor_train.clamp_min(args.anchor_floor)
@@ -636,6 +646,8 @@ def main() -> int:
         "anchor_summary": {
             "env_stability_mean": float(env_stability.mean().item()),
             "relevance_mean": float(relevance.mean().item()),
+            "task2_relevance_mean": float(task2_relevance.mean().item()),
+            "fallback_source_mean": float(fallback_source.mean().item()),
             "anchor_mean": float(anchor.mean().item()),
             "anchor_min": float(anchor.min().item()),
             "anchor_max": float(anchor.max().item()),
@@ -651,6 +663,8 @@ def main() -> int:
                 "name": TRAIN_CONCEPTS[i],
                 "env_stability": float(env_stability[i].item()),
                 "relevance": float(relevance[i].item()),
+                "task2_relevance": float(task2_relevance[i].item()),
+                "fallback_source": float(fallback_source[i].item()),
                 "anchor": float(anchor[i].item()),
             }
             for i in range(len(TRAIN_CONCEPTS))
