@@ -461,6 +461,9 @@ def main() -> int:
     parser.add_argument("--anti-threshold", type=float, default=0.05)
     parser.add_argument("--anti-penalty", type=float, default=1.0)
     parser.add_argument("--anchor-floor", type=float, default=0.0)
+    parser.add_argument("--fallback-strength", type=float, default=0.0)
+    parser.add_argument("--fallback-tau", type=float, default=0.02)
+    parser.add_argument("--fallback-relevance-power", type=float, default=1.0)
     parser.add_argument("--subspace-lambda", type=float, default=2.0)
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--text-device", default="cpu")
@@ -502,7 +505,10 @@ def main() -> int:
     stable_mask = anchor >= args.anti_threshold
     random_scores = torch.rand(anchor.shape, generator=torch.Generator().manual_seed(args.seed + 1000))
 
-    anchor_train = anchor.clamp_min(args.anchor_floor)
+    fallback = relevance.pow(args.fallback_relevance_power)
+    fallback_gate = anchor / (anchor + args.fallback_tau)
+    anchor_train = (fallback_gate * anchor) + ((1.0 - fallback_gate) * args.fallback_strength * fallback)
+    anchor_train = anchor_train.clamp_min(args.anchor_floor)
 
     models = {
         "task1_only": base,
@@ -564,6 +570,10 @@ def main() -> int:
             "anchor_mean": float(anchor.mean().item()),
             "anchor_min": float(anchor.min().item()),
             "anchor_max": float(anchor.max().item()),
+            "train_anchor_mean": float(anchor_train.mean().item()),
+            "train_anchor_min": float(anchor_train.min().item()),
+            "train_anchor_max": float(anchor_train.max().item()),
+            "fallback_gate_mean": float(fallback_gate.mean().item()),
             "anchor_floor": float(args.anchor_floor),
             "stable_count": int(stable_mask.sum().item()),
         },
